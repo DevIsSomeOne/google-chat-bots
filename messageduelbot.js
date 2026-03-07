@@ -5,7 +5,6 @@
   const old = document.getElementById('__msg_counter_ui__');
   if (old) old.remove();
 
-  /* ─── UI Shell ─── */
   const ui = document.createElement('div');
   ui.id = '__msg_counter_ui__';
   Object.assign(ui.style, {
@@ -64,8 +63,6 @@
   ui.append(header, statusLine, duelRow, inp1, inp2, startBtn);
   document.body.appendChild(ui);
 
-  /* ─── Scrolling Logic ─── */
-
   function countDOM() {
     const selectors = ['[data-message-id]', '[data-local-id]', '[jsmodel*="VPILAb"]', '[role="listitem"]'];
     let best = 0;
@@ -111,14 +108,12 @@
     let messageMap = new Map();
 
     while (totalLoaded < MAX_MESSAGES) {
-      // Perform the Scroll Up
       container.scrollTop = 0;
       statusLine.textContent = `Scrolling... (${totalLoaded} msgs found)`;
       
       const grew = await waitForGrowth(totalLoaded, 3500);
       const newCount = countDOM();
 
-      // Count Senders in current view
       const messages = document.querySelectorAll('[data-message-id], [data-local-id], [jsmodel*="VPILAb"]');
       messages.forEach(msg => {
         const id = msg.getAttribute('data-message-id') || msg.innerText.substring(0, 30);
@@ -131,15 +126,14 @@
         }
       });
 
-      // Update UI Counts
       const results = Array.from(messageMap.values());
       u1.countEl.textContent = results.filter(v => v === 1).length;
       u2.countEl.textContent = results.filter(v => v === 2).length;
 
       if (!grew) {
         noGrowthRounds++;
-        if (noGrowthRounds >= 2) break; // Reached top
-        container.scrollTop = 100; // Small wiggle to trigger lazy load
+        if (noGrowthRounds >= 2) break; 
+        container.scrollTop = 100; 
         await new Promise(r => setTimeout(r, 400));
         container.scrollTop = 0;
       } else {
