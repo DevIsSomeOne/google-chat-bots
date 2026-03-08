@@ -3,20 +3,16 @@
         window._diceObserver.disconnect();
         console.log("♻️ Stopped old observer.");
     }
-    console.log("🎮 GChat Bot 24.0: Hangman Fixed");
+    console.log("🎮 GChat Bot 27.0: Fix letter-spam loop");
 
     let _botSending = false;
+    let _hangmanStarting = false;
 
     let hangmanState = {
         active: false,
         word: "",
         guessed: [],
         lives: 6,
-        wordList: [
-            "JAVASCRIPT", "GOOGLE", "BROWSER", "ELEMENT", "CONSOLE",
-            "DOMINO", "NETWORK", "CHROME", "VIRTUAL", "KEYBOARD",
-            "FUNCTION", "VARIABLE", "PROMISE", "MUTATION", "OBSERVER"
-        ]
     };
 
     const HANGMAN_ART = [
@@ -34,6 +30,30 @@
     const getDisplayWord = () => hangmanState.word.split('').map(l => hangmanState.guessed.includes(l) ? l : '_').join(' ');
     const getRemainingLetters = () => "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('').filter(l => !hangmanState.guessed.includes(l)).join(' ');
 
+    const fetchRandomWord = async () => {
+        try {
+            const res = await fetch("https://random-word-api.herokuapp.com/word?number=1&swear=0");
+            const data = await res.json();
+            const word = data[0];
+            if (/^[a-zA-Z]{4,12}$/.test(word)) return word.toUpperCase();
+        } catch (e) { console.warn("Word API failed, using fallback.", e); }
+
+        const fallback = [
+            "PLANET","BRIDGE","JUNGLE","PIRATE","CANDLE","FROZEN","MARBLE","COBALT",
+            "WANDER","FELINE","DONKEY","GOBLIN","ZIPPER","CASTLE","TANGLE","ROCKET",
+            "RIDDLE","BASKET","SILVER","MIRROR","BOTTLE","CACTUS","DRAGON","FEATHER",
+            "HAMMER","ISLAND","JIGSAW","KERNEL","MAGNET","NOODLE","OYSTER","PEPPER",
+            "QUARTZ","RIBBON","SOCKET","TIMBER","VELVET","WALRUS","ZENITH","ALPINE",
+            "BANTER","CINDER","DOLLOP","EMPIRE","FAUCET","GRAVEL","HERMIT","INDIGO",
+            "KETTLE","LANTERN","MUFFIN","NAPKIN","PEBBLE","RADISH","SADDLE","TUNDRA",
+            "VORTEX","WOMBAT","ANCHOR","CREVICE","ECLIPSE","FROLIC","GALLOP","HARVEST",
+            "JASMINE","KETCHUP","LOBSTER","MUSTARD","NARWHAL","ORCHID","PENGUIN","RASCAL",
+            "SERPENT","TSUNAMI","UNICORN","VAMPIRE","WEASEL","DAGGER","EMERALD","FALCON",
+            "HORIZON","IMPULSE","KINGDOM","MONARCH","PHANTOM","QUANTUM","LABYRINTH"
+        ];
+        return fallback[Math.floor(Math.random() * fallback.length)];
+    };
+
     const sendMessage = (text) => {
         const editor = document.querySelector('div[contenteditable="true"]');
         if (!editor) { console.warn("⚠️ No editor found!"); return; }
@@ -44,73 +64,86 @@
         document.execCommand('insertText', false, text);
         setTimeout(() => {
             editor.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, keyCode: 13, key: 'Enter' }));
-            setTimeout(() => { _botSending = false; }, 800);
+            setTimeout(() => { _botSending = false; }, 1200);
         }, 100);
     };
 
-    const handleHangman = (cmd, rawName) => {
+    const startHangman = async (rawName) => {
+        if (_hangmanStarting) return;
+        _hangmanStarting = true;
         const name = cleanName(rawName);
-        const cmdL = cmd.toLowerCase().trim();
-
-        if (cmdL === "!hangman") {
-            hangmanState.word    = hangmanState.wordList[Math.floor(Math.random() * hangmanState.wordList.length)];
-            hangmanState.guessed = [];
-            hangmanState.lives   = 6;
-            hangmanState.active  = true;
-            return `🕹️ Hangman started by ${name}!\n\`\`\`\n${getArt()}\n\`\`\`\nWord: ${getDisplayWord()}\n❤️ Lives: ${hangmanState.lives} | Letters left: ${getRemainingLetters()}\nGuess with !a !b !c ...`;
-        }
-
-        if (hangmanState.active && /^![a-zA-Z]$/.test(cmd.trim())) {
-            const letter = cmd.trim()[1].toUpperCase();
-            if (hangmanState.guessed.includes(letter)) return `⚠️ ${name}: "${letter}" already guessed!\nWord: ${getDisplayWord()} | ❤️ ${hangmanState.lives}`;
-            hangmanState.guessed.push(letter);
-            if (hangmanState.word.includes(letter)) {
-                if (!getDisplayWord().includes('_')) {
-                    hangmanState.active = false;
-                    return `🎉 ${name} solved it! The word was ${hangmanState.word}. YOU WIN!\nType !hangman to play again.`;
-                }
-                return `✅ ${name} found "${letter}"!\n\`\`\`\n${getArt()}\n\`\`\`\nWord: ${getDisplayWord()}\n❤️ Lives: ${hangmanState.lives} | Letters left: ${getRemainingLetters()}`;
-            } else {
-                hangmanState.lives--;
-                if (hangmanState.lives <= 0) {
-                    hangmanState.active = false;
-                    return `💀 GAME OVER, ${name}! The word was ${hangmanState.word}.\n\`\`\`\n${getArt()}\n\`\`\`\nType !hangman to try again.`;
-                }
-                return `❌ ${name}: no "${letter}"!\n\`\`\`\n${getArt()}\n\`\`\`\nWord: ${getDisplayWord()}\n❤️ Lives: ${hangmanState.lives} | Letters left: ${getRemainingLetters()}`;
-            }
-        }
-        return null;
+        sendMessage("⏳ Fetching a random word...");
+        const word = await fetchRandomWord();
+        hangmanState.word    = word;
+        hangmanState.guessed = [];
+        hangmanState.lives   = 6;
+        hangmanState.active  = true;
+        setTimeout(() => {
+            sendMessage(`🕹️ Hangman started by ${name}!\n\`\`\`\n${getArt()}\n\`\`\`\nWord: ${getDisplayWord()} (${word.length} letters)\n❤️ Lives: ${hangmanState.lives} | Letters left: ${getRemainingLetters()}\nGuess with !a  !b  !c ...`);
+            _hangmanStarting = false;
+        }, 1400);
     };
 
-    // ── THE KEY FIX: observe at document level, scan ALL nodes aggressively ──
-    // GChat renders messages into deeply nested shadow-like structures.
-    // Instead of hoping the right node surfaces, we scan every added node
-    // AND every text node inside it.
+    const guessLetter = (cmd, rawName) => {
+        // ── HARD GUARD: if game not active, do nothing ──────────────────────
+        if (!hangmanState.active) return;
 
-    const processedIds = new WeakSet();
+        const name = cleanName(rawName);
+        const letter = cmd[1].toUpperCase();
+
+        if (hangmanState.guessed.includes(letter)) {
+            sendMessage(`⚠️ ${name}: "${letter}" already guessed!\nWord: ${getDisplayWord()} | ❤️ ${hangmanState.lives}`);
+            return;
+        }
+
+        hangmanState.guessed.push(letter);
+
+        if (hangmanState.word.includes(letter)) {
+            // Check win BEFORE sending — set active=false immediately so no
+            // further guesses can sneak through while the message is sending
+            const won = !getDisplayWord().includes('_');
+            if (won) {
+                hangmanState.active = false; // ← stop game RIGHT NOW
+                sendMessage(`🎉 ${name} solved it! The word was ${hangmanState.word}. YOU WIN! 🎊\nType !hangman to play again.`);
+                return;
+            }
+            sendMessage(`✅ ${name} found "${letter}"!\n\`\`\`\n${getArt()}\n\`\`\`\nWord: ${getDisplayWord()}\n❤️ Lives: ${hangmanState.lives} | Letters left: ${getRemainingLetters()}`);
+        } else {
+            hangmanState.lives--;
+            if (hangmanState.lives <= 0) {
+                hangmanState.active = false; // ← stop game RIGHT NOW
+                sendMessage(`💀 GAME OVER, ${name}! The word was ${hangmanState.word}.\n\`\`\`\n${getArt()}\n\`\`\`\nType !hangman to try again.`);
+                return;
+            }
+            sendMessage(`❌ ${name}: no "${letter}"!\n\`\`\`\n${getArt()}\n\`\`\`\nWord: ${getDisplayWord()}\n❤️ Lives: ${hangmanState.lives} | Letters left: ${getRemainingLetters()}`);
+        }
+    };
+
+    // ── Observer ──────────────────────────────────────────────────────────────
+    const processedNodes = new WeakSet();
 
     const tryHandleNode = (node) => {
         if (node.nodeType !== 1) return;
-        if (processedIds.has(node)) return;
 
-        const raw = node.innerText || node.textContent || '';
-        const text = raw.trim();
-        if (!text) return;
+        // Mark as processed IMMEDIATELY — before any async/guard checks.
+        // This prevents the same node being handled twice if _botSending
+        // was true on first pass and false on a re-scan.
+        if (processedNodes.has(node)) return;
+        processedNodes.add(node);
 
-        // Only process nodes whose text IS a command (short, starts with !)
-        // This avoids matching bot replies or large blocks of text
+        // Now apply guards (node is already marked so it won't re-enter)
+        if (_botSending || _hangmanStarting) return;
+
+        const text = (node.innerText || node.textContent || '').trim();
+        if (!text || text.length > 300) return;
+
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const cmd = lines.find(l => /^![a-zA-Z]+$/.test(l));
         if (!cmd) return;
 
-        // Also skip if the node is too tall (i.e. it's a container with many messages)
-        // We want leaf-level message nodes
-        if (text.length > 300) return;
+        console.log(`📨 Command: "${cmd}"`);
 
-        processedIds.add(node);
-        console.log(`📨 Command detected: "${cmd}" in`, node);
-
-        // Sender name — walk up the tree looking for name elements
+        // Find sender name
         let rawName = "Player";
         let el = node;
         for (let i = 0; i < 12; i++) {
@@ -121,22 +154,16 @@
         }
 
         const cmdL = cmd.toLowerCase();
-        let response = null;
 
         if (cmdL === '!hangman') {
-            response = handleHangman(cmd, rawName);
+            startHangman(rawName);
         } else if (hangmanState.active && /^![a-zA-Z]$/.test(cmd)) {
-            response = handleHangman(cmd, rawName);
+            guessLetter(cmd, rawName);
         } else if (cmdL === '!dice') {
             const res = Math.floor(Math.random() * 6) + 1;
-            response = `🎲 ${cleanName(rawName)} rolled a ${res}! ${["⚀","⚁","⚂","⚃","⚄","⚅"][res-1]}`;
+            setTimeout(() => sendMessage(`🎲 ${cleanName(rawName)} rolled a ${res}! ${["⚀","⚁","⚂","⚃","⚄","⚅"][res-1]}`), 300);
         } else if (cmdL === '!kissmyhug') {
-            response = `Sending a big hug and a kiss to ${cleanName(rawName)}! 💋🤗😘`;
-        }
-
-        if (response) {
-            console.log(`🤖 Replying: "${response.substring(0,60)}"`);
-            setTimeout(() => sendMessage(response), 500);
+            setTimeout(() => sendMessage(`Sending a big hug and a kiss to ${cleanName(rawName)}! 💋🤗😘`), 300);
         }
     };
 
@@ -145,14 +172,11 @@
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
                 tryHandleNode(node);
-                // Also check children — GChat often nests the actual text node
-                if (node.querySelectorAll) {
-                    node.querySelectorAll('*').forEach(tryHandleNode);
-                }
+                if (node.querySelectorAll) node.querySelectorAll('*').forEach(tryHandleNode);
             }
         }
     });
 
     window._diceObserver.observe(document.body, { childList: true, subtree: true });
-    console.log("✅ Bot 24.0 ready. Commands: !hangman  !{letter}  !dice  !kissmyhug");
+    console.log("✅ Bot 27.0 ready — !hangman  !{letter}  !dice  !kissmyhug");
 })();
