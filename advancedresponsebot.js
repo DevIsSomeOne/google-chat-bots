@@ -35,7 +35,7 @@
 
     const sendKiss = (userName) => {
         const name = cleanName(userName);
-        sendMessage(`Sending a big hug and a kiss to ${name}! 💋🤗😘`);
+        sendMessage(`${name} 💋😘`);
     };
 
     const extractName = (node) => {
