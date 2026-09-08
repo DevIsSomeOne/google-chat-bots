@@ -38,9 +38,6 @@
     };
 
     // ── Missing States & Stubs (Added for stability) ──────────────────────────
-    const AI_API_KEY_STORAGE = 'gchat_bot_api_key';
-    let chatState = { active: false, history: [] };
-
     let ticTacToeState = { active: false, board: [], currentPlayer: "", players: {} };
     let madLibsState = { active: false, needed: [], collected: [], startedBy: "" };
     let zorkState = { active: false, location: "entrance", inventory: [], flags: {} };
@@ -180,38 +177,52 @@
     };
 
     // ── Game State Checker ──────────────────────────────────────────────────
+    // When a game is active and a lot of people are in the chat, many of them
+    // will inevitably fire commands that get rejected. Without a cooldown,
+    // each rejection queues its own reply and the bot spends ages just
+    // catching up on "game already in progress" spam. This throttles those
+    // notices (the block itself is never skipped, only the extra chatter).
+    let _lastBusyNotice = 0;
+    const BUSY_NOTICE_COOLDOWN_MS = 4000;
+    const notifyBusy = (msg) => {
+        const now = Date.now();
+        if (now - _lastBusyNotice < BUSY_NOTICE_COOLDOWN_MS) return;
+        _lastBusyNotice = now;
+        sendMessage(msg);
+    };
+
     const isGameActive = () => {
         if (hangmanState.active || _hangmanStarting) {
-            sendMessage("🚫 Finish the current Hangman game first!\nWord: " + getDisplayWord() + " | ❤️ Lives: " + hangmanState.lives);
+            notifyBusy("🚫 Finish the current Hangman game first!\nWord: " + getDisplayWord() + " | ❤️ Lives: " + hangmanState.lives);
             return true;
         }
         if (triviaState.active || _triviaStarting) {
-            sendMessage("🚫 Finish the current Trivia question first!\n❓ " + triviaState.question + "\n" + triviaState.choices.join("\n") + "\nAnswer with !A !B !C or !D");
+            notifyBusy("🚫 Finish the current Trivia question first!\n❓ " + triviaState.question + "\n" + triviaState.choices.join("\n") + "\nAnswer with !A !B !C or !D");
             return true;
         }
         if (wordleState.active || _wordleStarting) {
             const board = wordleState.guesses.map(g => getWordleEmoji(g, wordleState.word) + "  " + g).join("\n");
-            sendMessage("🟩 Wordle already in progress! (" + wordleState.guesses.length + "/" + wordleState.maxGuesses + " guesses)\n\n" + (board || "(no guesses yet)") + "\n\nGuess with !guess WORD");
+            notifyBusy("🟩 Wordle already in progress! (" + wordleState.guesses.length + "/" + wordleState.maxGuesses + " guesses)\n\n" + (board || "(no guesses yet)") + "\n\nGuess with !guess WORD");
             return true;
         }
         if (ticTacToeState.active) {
-            sendMessage("❌ Tic-Tac-Toe is in progress!\n" + formatTicTacToeBoard() + "\nIt's " + ticTacToeState.players[ticTacToeState.currentPlayer] + "'s turn (" + ticTacToeState.currentPlayer + "). Use !move [1-9].");
+            notifyBusy("❌ Tic-Tac-Toe is in progress!\n" + formatTicTacToeBoard() + "\nIt's " + ticTacToeState.players[ticTacToeState.currentPlayer] + "'s turn (" + ticTacToeState.currentPlayer + "). Use !move [1-9].");
             return true;
         }
         if (madLibsState.active) {
-            sendMessage("📝 Mad Libs is in progress! " + madLibsState.startedBy + ", please provide a " + madLibsState.needed[madLibsState.collected.length] + ".");
+            notifyBusy("📝 Mad Libs is in progress! Next word needed: " + madLibsState.needed[madLibsState.collected.length] + " (anyone can answer).");
             return true;
         }
         if (zorkState.active) {
-            sendMessage("🛡️ Zork is in progress! Type commands to play (e.g. 'look') or 'quit' to exit.");
+            notifyBusy("🛡️ Zork is in progress! Type commands to play (e.g. 'look') or 'quit' to exit.");
             return true;
         }
         if (blackjackState.active) {
-            sendMessage("🃏 Blackjack already in progress!\nYour Hand: " + formatHand(blackjackState.playerHand) + " (Score: " + blackjackState.playerScore + ")\nType !hit or !stand");
+            notifyBusy("🃏 Blackjack already in progress!\nCurrent Hand: " + formatHand(blackjackState.playerHand) + " (Score: " + blackjackState.playerScore + ")\nType !hit or !stand");
             return true;
         }
-        if (chatState.active) {
-            sendMessage("💬 I'm in chat mode. Please finish our conversation first or type !chat to exit.");
+        if (anagramState.active || _anagramStarting) {
+            notifyBusy("🔤 Anagram already in progress! Unscramble: " + anagramState.shuffledWord);
             return true;
         }
         return false;
@@ -345,10 +356,6 @@
     const blackjackHit = (rawName) => {
         if (!blackjackState.active || blackjackState.gameOver) return;
         const name = cleanName(rawName);
-        if (name !== blackjackState.startedBy) {
-            sendMessage("⚠️ Only " + blackjackState.startedBy + " can play this hand.");
-            return;
-        }
 
         blackjackState.playerHand.push(blackjackState.deck.pop());
         blackjackState.playerScore = calculateScore(blackjackState.playerHand);
@@ -375,10 +382,6 @@
     const blackjackStand = (rawName) => {
         if (!blackjackState.active || blackjackState.gameOver) return;
         const name = cleanName(rawName);
-        if (name !== blackjackState.startedBy) {
-            sendMessage("⚠️ Only " + blackjackState.startedBy + " can play this hand.");
-            return;
-        }
 
         blackjackState.gameOver = true;
         blackjackState.active = false;
@@ -399,106 +402,6 @@
             "Your Hand: " + formatHand(blackjackState.playerHand) + " (Score: " + blackjackState.playerScore + ")\n\n" +
             resultMessage + "\n\nType !blackjack to play again."
         );
-    };
-
-    // ── Chatbot Engine (ELIZA & LLM) ────────────────────────────────────────
-    const processLLMChat = async (input, name) => {
-        const apiKey = localStorage.getItem(AI_API_KEY_STORAGE);
-        const useFreeService = !apiKey;
-
-        // Use Pollinations.ai for free tier (no key needed, CORS friendly)
-        const endpoint = useFreeService ? 'https://text.pollinations.ai/' : 'https://api.openai.com/v1/chat/completions';
-        const model = useFreeService ? 'openai' : 'gpt-4o-mini';
-        
-        const headers = { 'Content-Type': 'application/json' };
-        if (!useFreeService) {
-            headers['Authorization'] = `Bearer ${apiKey}`;
-        }
-
-        try {
-            // Keep history to a reasonable size (last 10 messages + system prompt)
-            chatState.history.push({ role: 'user', content: input });
-            if (chatState.history.length > 11) {
-                chatState.history = [chatState.history[0], ...chatState.history.slice(-10)];
-            }
-            
-            const body = {
-                model: model,
-                messages: chatState.history
-            };
-            if (!useFreeService) body.max_tokens = 150;
-
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) {
-                const errorText = await res.text().catch(() => 'Unknown error');
-                console.error("AI API Error:", errorText);
-                // This error is now only relevant if the user provided a key and it failed.
-                if (res.status === 401 && !useFreeService) {
-                    chatState.active = false; // Stop the loop
-                    sendMessage("⚠️ Your OpenAI API key is invalid. Chat mode deactivated. Please set a valid key with `!setkey`.");
-                    chatState.history = [];
-                } else {
-                    sendMessage(`⚠️ AI API error. The service might be busy.`);
-                    chatState.history.pop();
-                }
-                return;
-            }
-
-            let aiResponse = "";
-            if (useFreeService) {
-                // Pollinations returns raw text
-                aiResponse = await res.text();
-            } else {
-                const data = await res.json();
-                aiResponse = data.choices && data.choices[0] ? data.choices[0].message.content.trim() : "I'm sorry, I couldn't generate a response.";
-            }
-
-            chatState.history.push({ role: 'assistant', content: aiResponse });
-            sendMessage("🤖 " + aiResponse);
-
-        } catch (e) {
-            console.error("Failed to fetch AI response:", e);
-            sendMessage("⚠️ Oops! I couldn't connect to the AI service. Please check the console for details.");
-            chatState.history.pop();
-        }
-    };
-
-    const processChat = (input, name) => {
-        if (!chatState.active) return;
-        processLLMChat(input, name);
-    };
-
-    const toggleChat = (rawName) => {
-        if (chatState.active) { chatState.active = false;
-            sendMessage("💬 Chat mode deactivated. It was nice talking to you, " + cleanName(rawName) + ".");
-        } else {
-            if (isGameActive()) return;
-            chatState.active = true;
-            chatState.history = [];
-            const apiKey = localStorage.getItem(AI_API_KEY_STORAGE);
-            if (apiKey) {
-                chatState.history.push({ role: 'system', content: 'You are a highly intelligent, modern AI assistant (GPT-4o). You are in a group chat. Be conversational, helpful, and concise.' });
-                sendMessage(
-                    "💬 **Premium AI Chat Activated**\n" +
-                    "I'm using your personal OpenAI key for high-quality responses. Let's talk, " +
-                    cleanName(rawName) + "?\n*(Type !chat to exit)*"
-                );
-            } else {
-                chatState.history.push({ role: 'system', content: 'You are a helpful AI assistant accessed via a free public service. Be conversational and concise.' });
-                sendMessage(
-                    "💬 **AI Chat Activated (Public Service)**\n" +
-                    "I'm using a free, public AI model. Responses may be slower or less reliable.\n" +
-                    "For a better experience, set an OpenAI key with `!setkey sk-your-key`.\n\n" +
-                    "What's on your mind, " +
-                    cleanName(rawName) + "?\n*(Type !chat to exit)*"
-                );
-            }
-        }
     };
 
     const processZorkCommand = (text) => { if (!zorkState.active) return;
@@ -1095,10 +998,13 @@
             const geoData = await geoRes.json();
             if (!geoData.results || geoData.results.length === 0) {
                 _botSending = false;
-                sendMessage("🌍 " + name + ": Couldn't find \"" + city + "\". Try being more specific (e.g. city, state, country).");
+                sendMessage("🌍 " + name + ": Couldn't find \"" + city + "\". Try just the city name (e.g. !weather Denver), or add a state/country if it's a common name (e.g. !weather Springfield, Illinois).");
                 return;
             }
-            const { latitude, longitude, name: cityName, country } = geoData.results[0];
+            const { latitude, longitude, name: cityName, country, admin1 } = geoData.results[0];
+            // Show exactly which place was matched, since common city names (Springfield,
+            // Paris, etc.) can resolve to somewhere the person didn't mean.
+            const locationLabel = [cityName, admin1, country].filter(Boolean).join(", ");
 
             const weatherRes = await fetch(
                 `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
@@ -1109,11 +1015,11 @@
 
             if (!daily || !daily.time || daily.time.length < 7) {
                  _botSending = false;
-                 sendMessage("🌦️ " + name + ": Could not retrieve weekly forecast data for " + cityName + ".");
+                 sendMessage("🌦️ " + name + ": Could not retrieve weekly forecast data for " + locationLabel + ".");
                  return;
             }
 
-            let forecastMessage = `🌦️ 7-Day Forecast for ${cityName}, ${country}\n(requested by ${name})\n\n`;
+            let forecastMessage = `🌦️ 7-Day Forecast for ${locationLabel}\n(requested by ${name} — !weather ${city})\n\n`;
 
             for (let i = 0; i < 7; i++) {
                 const date = new Date(daily.time[i] + 'T00:00:00Z'); // Use Z for UTC
@@ -1128,6 +1034,8 @@
                 forecastMessage += `${day}, ${dateStr}: ${WEATHER_EMOJI[code] || '🌡️'} ${WMO_CODES[code] || 'N/A'}\n` +
                                    `  └ High: ${maxC}°C / ${maxF}°F | Low: ${minC}°C / ${minF}°F\n`;
             }
+
+            forecastMessage += "\nWrong place? Add a state or country, e.g. !weather " + cityName + ", [state/country]";
 
             _botSending = false;
             sendMessage(forecastMessage);
@@ -1146,6 +1054,7 @@
         shuffledWord: "",
         startedBy: ""
     };
+    let _anagramStarting = false;
 
     const shuffleWord = (word) => {
         const arr = word.split('');
@@ -1161,17 +1070,17 @@
 
     const startAnagram = async (rawName) => {
         if (isGameActive()) return;
+        _anagramStarting = true;
 
         const name = cleanName(rawName);
         const word = await fetchRandomWord();
         const shuffledWord = shuffleWord(word);
 
-        anagramState = {
-            active: true,
-            word: word,
-            shuffledWord: shuffledWord,
-            startedBy: name
-        };
+        anagramState.active = true;
+        anagramState.word = word;
+        anagramState.shuffledWord = shuffledWord;
+        anagramState.startedBy = name;
+        _anagramStarting = false;
 
         sendMessage(
             "🔤 Anagram started by " + name + "!\n\n" +
@@ -1227,9 +1136,32 @@
         catch (e) { sendMessage("⚠️ " + name + ": Could not reach " + target + "."); }
     };
 
+    // ── Outgoing message queue ──────────────────────────────────────────────
+    // In a busy group chat, many people can trigger sendMessage() at nearly
+    // the same moment. Since there's only one compose box, firing execCommand
+    // from multiple overlapping calls corrupts the text (or drops replies),
+    // which is what makes the bot look "frozen". Queuing guarantees every
+    // reply is sent, in order, one at a time.
+    const _outgoingQueue = [];
+    let _sendingNow = false;
+
     const sendMessage = (text) => {
+        _outgoingQueue.push(text);
+        _pumpOutgoingQueue();
+    };
+
+    const _pumpOutgoingQueue = () => {
+        if (_sendingNow || _outgoingQueue.length === 0) return;
+        const text = _outgoingQueue.shift();
         const editor = document.querySelector('div[contenteditable="true"]');
-        if (!editor) return;
+        if (!editor) {
+            // No editor available right now (tab backgrounded, DOM not ready, etc).
+            // Don't drop the message — retry shortly instead of freezing the queue.
+            _outgoingQueue.unshift(text);
+            setTimeout(_pumpOutgoingQueue, 500);
+            return;
+        }
+        _sendingNow = true;
         _botSending = true;
         editor.focus();
         document.execCommand('selectAll', false, null);
@@ -1237,7 +1169,11 @@
         document.execCommand('insertText', false, text);
         setTimeout(() => {
             editor.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, keyCode: 13, key: 'Enter' }));
-            setTimeout(() => { _botSending = false; }, 1200);
+            setTimeout(() => {
+                _sendingNow = false;
+                _botSending = false;
+                _pumpOutgoingQueue();
+            }, 1200);
         }, 100);
     };
 
@@ -1303,11 +1239,7 @@
         }
         // ────────────────────────────────────────────────────────────────────
 
-        if (chatState.active && !text.startsWith('!')) { 
-            const botIcons = ['🤖', '⚠️', '✅', '💬', '🃏', '⚔️', '📝', '🧠', '🕹️', '🟩', '🎲', '🎰', '📚', '🏓', '💤', '🌤️', '❤️', '🗿', '💌', '💋'];
-            if (botIcons.some(icon => text.startsWith(icon))) return;
-            processChat(text, name); return; }
-        if (madLibsState.active && !text.startsWith('!') && name === madLibsState.startedBy) { processMadLibsWord(text, name); return; }
+        if (madLibsState.active && !text.startsWith('!')) { processMadLibsWord(text, name); return; }
 
         if (!text || text.length > 300) return;
 
@@ -1338,33 +1270,8 @@
         const args = parts.slice(1);
         const query = parts.slice(1).join(' ');
  
-        if (cmd === '!setkey' || cmd === '!clearkey') {
-            if (cmd === '!clearkey' || (args[0] && args[0].toLowerCase() === 'remove')) {
-                localStorage.removeItem(AI_API_KEY_STORAGE);
-                sendMessage("✅ API Key removed. AI chat features are now disabled.");
-                return;
-            }
-
-            const key = (args[0] || '').trim();
-            if (!key) {
-                sendMessage("Usage: !setkey YOUR_API_KEY\nYour key will be stored locally in your browser and never shared. Use `!setkey remove` or `!clearkey` to delete it.");
-                return;
-            }
-            if (!key.startsWith('sk-')) {
-                sendMessage("⚠️ Invalid key format! OpenAI API keys usually start with `sk-`. Please check your key and try again.");
-                return;
-            }
-            if (/^(YOUR_?API_?KEY|KEY|INSERT_?KEY_?HERE)$/i.test(key)) {
-                sendMessage("⚠️ You entered a placeholder! Please replace `" + key + "` with your actual OpenAI API key (starts with 'sk-').");
-                return;
-            }
-            localStorage.setItem(AI_API_KEY_STORAGE, key);
-            sendMessage("✅ API Key saved! The `!chat` command will now use a real AI. Enjoy!");
-            return;
-        }
- 
         if (cmd === '!weather') {
-            if (!query) { sendMessage("Usage: !weather {city, state, country}"); return; }
+            if (!query) { sendMessage("Usage: !weather [city]\nExamples: !weather Denver  |  !weather Springfield, Illinois"); return; }
             fetchWeather(query, rawName);
             return;
         }
@@ -1441,21 +1348,9 @@
         else if (cmd === '!wordle') { startWordle(rawName); } 
         else if (wordleState.active && cmd === '!guess') { guessWordle(query, rawName); }
         else if (cmd === '!zork') { startZork(rawName); }
-        else if (cmd === '!chat') { toggleChat(rawName); }
         else if (cmd === '!compliment') { sendCompliment(rawName); }
         else if (cmd === '!dice') { const r = Math.floor(Math.random()*6)+1; setTimeout(() => sendMessage("🎲 " + cleanName(rawName) + " rolled a " + r + "! " + ["⚀","⚁","⚂","⚃","⚄","⚅"][r-1]), 300); }
         else if (cmd === '!kissmyhug') { setTimeout(() => sendMessage("Sending a big hug and a kiss to " + cleanName(rawName) + "! 💋🤗😘"), 300); }
-        else if (cmd === '!slots') {
-            const icons = ["🍒","🍋","🍇","🍉","7️⃣","🔔","💎"];
-            const r1 = icons[Math.floor(Math.random()*icons.length)];
-            const r2 = icons[Math.floor(Math.random()*icons.length)];
-            const r3 = icons[Math.floor(Math.random()*icons.length)];
-            let msg = `🎰 Slots for ${cleanName(rawName)}:\n| ${r1} | ${r2} | ${r3} |`;
-            if (r1 === r2 && r2 === r3) msg += "\n🔥 JACKPOT! You win! 🔥";
-            else if (r1 === r2 || r2 === r3 || r1 === r3) msg += "\n✨ Nice! Two matches.";
-            else msg += "\n💸 Better luck next time.";
-            sendMessage(msg);
-        }
         else if (cmd === '!anagram') { startAnagram(rawName); }
         else if (anagramState.active && cmd === '!anagram') { guessAnagram(query, rawName); }
         else if (cmd === '!wiki') { fetchWiki(query, rawName); }
@@ -1467,8 +1362,24 @@
         }
     };
 
-    window._diceObserver = new MutationObserver((mutations) => {
-        if (_botSending) return;
+    // Busy group chats can fire dozens of DOM mutations per second (new
+    // messages, read receipts, typing indicators, reactions). Handling each
+    // mutation synchronously and immediately used to make the tab jank/stall
+    // when a lot of people were active at once. Instead, batch mutations and
+    // process them once per animation frame.
+    let _pendingMutations = [];
+    let _mutationFrameQueued = false;
+
+    const _flushPendingMutations = () => {
+        if (_botSending) {
+            // Bot's own message is still being sent — try again next frame
+            // instead of dropping the batch (keep mutations queued).
+            requestAnimationFrame(_flushPendingMutations);
+            return;
+        }
+        _mutationFrameQueued = false;
+        const mutations = _pendingMutations;
+        _pendingMutations = [];
         for (const mutation of mutations)
             for (const node of mutation.addedNodes) {
                 if (node.nodeType !== 1) continue;
@@ -1479,6 +1390,14 @@
                     node.querySelectorAll('[role="listitem"]').forEach(tryHandleNode);
                 }
             }
+    };
+
+    window._diceObserver = new MutationObserver((mutations) => {
+        _pendingMutations.push(...mutations);
+        if (!_mutationFrameQueued) {
+            _mutationFrameQueued = true;
+            requestAnimationFrame(_flushPendingMutations);
+        }
     });
 
     window._diceObserver.observe(document.body, { childList: true, subtree: true });
@@ -1486,8 +1405,7 @@
 
     setTimeout(() => {
         sendMessage(
-            "🤖 GChat Bot 35.1 is now online! Here's what I can do:\n\n" +
-            "💬 !chat — Talk to a modern AI! Uses a free public service by default.\n     └ For better performance, set an OpenAI key with `!setkey sk-...`\n" +
+            "🤖 GChat Bot 35.1 is now online! Coded by Thomas. Here's what I can do:\n\n" +
             "🃏 !blackjack or !21 — Play a game of Blackjack\n     └ !hit or !stand when it's your turn\n" +
             "⚔️ !tictactoe [@player] — Play Tic-Tac-Toe vs Bot or a friend.\n     └ !move [1-9] to play.\n" +
             "📝 !madlibs — Play a game of Mad Libs.\n" +
@@ -1496,11 +1414,9 @@
             "🕹️ !hangman — Start a game of Hangman\n" +
             "🟩 !wordle — Guess a 5-letter word in 6 tries\n     └ !guess WORD to make a guess (e.g. !guess CRANE)\n" +
             "🎲 !dice — Roll a six-sided die\n" +
-            "🎰 !slots — Spin the slot machine\n" +
             "📚 !wiki [term] — Fetch a Wikipedia summary\n" +
-            "🏓 !ping [url] — Check if a website is reachable\n" +
             "💤 !afk [reason] — Set yourself as away. I'll auto-reply if you're tagged.\n" +
-            "🌤️ !weather {city, state, country} — Get the 7-day forecast\n" +
+            "🌤️ !weather [city] — Get the 7-day forecast\n     └ Just the city name works, e.g. !weather Denver\n     └ Add a state/country if it's ambiguous, e.g. !weather Springfield, Illinois\n" +
             "❤️ !ship [name1] [name2] — Check name compatibility.\n" +
             "🗿 !rps [rock|paper|scissors] — Play Rock, Paper, Scissors.\n" +
             "💌 !compliment — Receive a compliment\n" +
