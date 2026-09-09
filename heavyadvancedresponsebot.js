@@ -45,6 +45,15 @@
     const _lastAfkNotice = {};
     const AFK_NOTICE_COOLDOWN_MS = 10000;
 
+    // ── Ragebait State ────────────────────────────────────────────────────
+    // Only the 3 names listed here can set/clear a ragebait target. Put the
+    // exact display names of the people you want to have access below.
+    const RAGEBAIT_ADMINS = ["Name One", "Name Two", "Name Three"];
+    // { "targetnamelowercase": { message: "...", setBy: "..." } }
+    let ragebaitState = {};
+    const _lastRagebaitFire = {};
+    const RAGEBAIT_COOLDOWN_MS = 4000; // don't refire on the same target within this window
+
     // ── Mad Libs Engine ─────────────────────────────────────────────────────
     const MADLIBS_TEMPLATES = [
         {
@@ -1269,6 +1278,23 @@
         }
         // ────────────────────────────────────────────────────────────────────
 
+        // ── Ragebait Auto-Reply ─────────────────────────────────────────────
+        // If this speaker is currently a ragebait target, fire the stored
+        // reply. Skipped for !ragebait/!unragebait themselves so setting it
+        // up doesn't immediately trigger on the admin's own message.
+        if (!/^!(un)?ragebait\b/i.test(text)) {
+            const rbTarget = ragebaitState[name.toLowerCase()];
+            if (rbTarget) {
+                const now = Date.now();
+                const key = name.toLowerCase();
+                if (now - (_lastRagebaitFire[key] || 0) > RAGEBAIT_COOLDOWN_MS) {
+                    _lastRagebaitFire[key] = now;
+                    sendMessage(rbTarget.message);
+                }
+            }
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         if (madLibsState.active && !text.startsWith('!')) { processMadLibsWord(text, name); return; }
 
         if (!text || text.length > 300) return;
@@ -1390,6 +1416,29 @@
             afkState[cleanName(rawName)] = reason;
             sendMessage("💤 " + cleanName(rawName) + " is now AFK: " + reason);
         }
+        else if (cmd === '!ragebait') {
+            const setterName = cleanName(rawName);
+            const isAdmin = RAGEBAIT_ADMINS.some(a => a.toLowerCase() === setterName.toLowerCase());
+            if (!isAdmin) { sendMessage("🚫 " + setterName + " isn't authorized to use !ragebait."); return; }
+            if (args.length < 2) { sendMessage("Usage: !ragebait [name] [message to auto-reply with every time they talk]"); return; }
+            const targetDisplay = cleanName(args[0]);
+            const message = args.slice(1).join(' ');
+            ragebaitState[targetDisplay.toLowerCase()] = { message, setBy: setterName };
+            sendMessage("🎯 Ragebait armed on " + targetDisplay + " by " + setterName + ".");
+        }
+        else if (cmd === '!unragebait') {
+            const setterName = cleanName(rawName);
+            const isAdmin = RAGEBAIT_ADMINS.some(a => a.toLowerCase() === setterName.toLowerCase());
+            if (!isAdmin) { sendMessage("🚫 " + setterName + " isn't authorized to use !unragebait."); return; }
+            if (!args[0]) { sendMessage("Usage: !unragebait [name]"); return; }
+            const targetDisplay = cleanName(args[0]);
+            if (ragebaitState[targetDisplay.toLowerCase()]) {
+                delete ragebaitState[targetDisplay.toLowerCase()];
+                sendMessage("✅ Ragebait cleared for " + targetDisplay + ".");
+            } else {
+                sendMessage("No active ragebait on " + targetDisplay + ".");
+            }
+        }
     };
 
     // Busy group chats can fire dozens of DOM mutations per second (new
@@ -1450,7 +1499,8 @@
             "❤️ !ship [name1] [name2] — Check name compatibility.\n" +
             "🗿 !rps [rock|paper|scissors] — Play Rock, Paper, Scissors.\n" +
             "💌 !compliment — Receive a compliment\n" +
-            "💋 !kissmyhug — Spread some love\n\n" +
+            "💋 !kissmyhug — Spread some love\n" +
+            "🎯 !ragebait [name] [msg] / !unragebait [name] — restricted to a few admins\n\n" +
             "Only one game can run at a time. Have fun! 🎉"
         );
     }, 1500);
