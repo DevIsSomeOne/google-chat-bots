@@ -1690,7 +1690,7 @@
     if (window._reloadingInterval) clearInterval(window._reloadingInterval);
     window._reloadingInterval = setInterval(() => {
         sendMessage("Reloading...");
-    }, 10000);
+    }, 1000000);
 
     setTimeout(() => {
         sendMessage(
