@@ -737,6 +737,96 @@
         setTimeout(() => sendMessage("💌 " + name + ": " + compliment), 300);
     };
 
+    // ── Roasts ───────────────────────────────────────────────────────────────
+    const ROASTS = [
+        "You have the confidence of someone who's never once read the terms and conditions. 📜",
+        "You're the human equivalent of a buffering video. 🔄",
+        "You have the energy of a phone at 1% brightness. 🔋",
+        "You're proof that spellcheck can only do so much. 🔤",
+        "You've got main character energy in a story nobody's reading. 📖",
+        "You're the reason group projects have a 'did not contribute' section. 📋",
+        "You have the aim of someone throwing trash at a can from two feet away. 🗑️",
+        "You're like a Wi-Fi signal — great in theory, unreliable in practice. 📶",
+        "You have the punctuality of a pizza that says '30 minutes or free' and takes an hour. 🍕",
+        "You're the human version of a typo nobody caught before sending. ⌨️",
+        "You've got the decision-making speed of someone picking a Netflix show for 45 minutes. 🍿",
+        "You're basically a software update — nobody asked, and it's happening at the worst time. 💻",
+        "You have the reliability of a phone charger that only works at one exact angle. 🔌",
+        "You're the human equivalent of a 'reply all' email nobody needed. 📧",
+        "You've got the balance of a Roomba that's found the stairs. 🤖",
+        "You're like a parking ticket — unwanted, unnecessary, and always at the worst time. 🎫",
+        "You have the memory of someone who walks into a room and forgets why. 🚪",
+        "You're the human version of a CAPTCHA — everyone's patience runs out around you. 🧩",
+        "You've got the grace of someone tripping on a flat surface. 🧍",
+        "You're like a microwave that beeps three times but somehow the food's still cold. 🍽️",
+        "You have the smoothness of gravel. 🪨",
+        "You're the reason instructions now come with pictures. 🖼️",
+        "You've got the timing of an alarm that goes off after you're already awake. ⏰",
+        "You're basically a software bug — hard to explain, impossible to reproduce on command. 🐛",
+        "You have the subtlety of a fire alarm during a nap. 🚨",
+        "You're the human equivalent of autocorrect changing a perfectly fine word. 📱",
+        "You've got the follow-through of a New Year's resolution by January 3rd. 🎆",
+        "You're like a GPS that says 'recalculating' way too often. 🗺️",
+        "You have the patience of someone waiting for a webpage to load on airport Wi-Fi. ✈️",
+        "You're the human version of a plot hole — everyone notices, nobody wants to explain it. 🕳️",
+        "You've got the coordination of a fan trying to catch confetti. 🎊",
+        "You're like a group chat notification — loud, frequent, and mostly unnecessary. 🔔",
+        "You have the consistency of gym motivation in February. 🏋️",
+        "You're the reason 'reply' and 'reply all' are two different buttons. 📨",
+        "You've got the accuracy of a weather app three weeks out. ☁️",
+        "You're like a vending machine that takes your money and gives you nothing. 🥤",
+        "You have the stealth of a shopping cart with one busted wheel. 🛒",
+        "You're the human equivalent of a printer that jams right before the deadline. 🖨️",
+        "You've got the volume control of someone whispering into a live mic. 🎤",
+        "You're like a browser with 47 tabs open and no idea which one's playing music. 🌐",
+        "You have the punctuality of a bus that's 'on its way' for twenty minutes straight. 🚌",
+        "You're the reason spellcheck has trust issues. ✍️",
+        "You've got the elegance of someone doing the 'after you, no after you' door dance alone. 🚪",
+        "You're like a Bluetooth speaker that connects to the wrong device every time. 🔊",
+        "You have the timing of a sneeze during a moment of silence. 🤧",
+        "You're the human version of a plot twist nobody asked for. 🌀",
+        "You've got the follow-up game of a text left on read for three days. 📵",
+        "You're like a self-checkout machine — technically working, emotionally exhausting. 🛍️",
+        "You have the reliability of a 'call you right back' that never comes. ☎️",
+        "You're the reason autocomplete gave up trying to guess what you meant. 🔍",
+        "You've got the poise of someone waving back at a person who wasn't waving at them. 👋",
+        "You're like a loading bar stuck at 99%. 📊",
+        "You have the subtlety of a car alarm at 3am. 🚗",
+        "You're the human equivalent of a chair that's 'just for decoration.' 🪑",
+        "You've got the aim of a paper airplane thrown indoors. ✈️",
+        "You're like a streaming app that logs you out for 'security reasons' weekly. 🔐",
+        "You have the punctuality of the last email in a thread that was already resolved. 📩",
+        "You're the reason 'you're on mute' became a universal phrase. 🎙️",
+        "You've got the confidence of someone singing karaoke to a song they don't know. 🎶",
+        "You're like a treadmill in January — full of promise, mostly unused by March. 🏃",
+        "You have the mystery of a 'no reply' address that somehow still expects a response. 📮",
+        "You're the human version of a website that makes you accept cookies twice. 🍪",
+        "You've got the drama of a phone battery that dies exactly at 20%. 🔋",
+        "You're like a group project slideshow with one slide that's clearly a different font. 🎞️",
+        "You have the accuracy of an ETA that assumes zero traffic, ever. 🚦",
+        "You're the reason 'are you still watching?' pops up on the screen. 📺",
+        "You've got the smoothness of a Zoom call with three seconds of lag. 🖥️",
+        "You're like an umbrella that turns inside out the second it's actually useful. ☔",
+        "You have the timing of a spoiler dropped one scene too early. 🎬",
+        "You're the human equivalent of a 'this meeting could've been an email.' 📨",
+        "You've got the reliability of a self-tying shoelace that's never actually tied. 👟",
+        "You're like a search engine returning results for something you never typed. 🔎",
+        "You have the punctuality of a delivery that says 'out for delivery' for two straight days. 📦",
+        "You're the reason 'undo send' exists as a feature. ↩️",
+        "You've got the composure of someone stepping on a Lego at 2am. 🧱",
+        "You're like a phone update that changes everything and explains nothing. 📲",
+        "You have the grace of a chair spinning one extra time after you tried to stop it. 🪑",
+        "You're the human version of a 'terms may change without notice.' 📜",
+        "You've got the consistency of a printer that only works when nobody's watching. 🖨️",
+        "You have the subtlety of confetti cannons at a library. 🎉",
+    ];
+
+    const sendRoast = (rawName, args) => {
+        const name = (args && args.length) ? cleanName(args.join(' ')) : cleanName(rawName);
+        const roast = ROASTS[Math.floor(Math.random() * ROASTS.length)];
+        setTimeout(() => sendMessage("🔥 " + name + ": " + roast), 300);
+    };
+
 
     const HANGMAN_ART = [
         ["  +---+  ","  |   |  ","      |  ","      |  ","      |  ","      |  ","========="],
@@ -1518,6 +1608,7 @@
         else if (wordleState.active && cmd === '!guess') { guessWordle(query, rawName); }
         else if (cmd === '!zork') { startZork(rawName); }
         else if (cmd === '!compliment') { sendCompliment(rawName); }
+        else if (cmd === '!roast') { sendRoast(rawName, args); }
         else if (cmd === '!dice') { const r = Math.floor(Math.random()*6)+1; setTimeout(() => sendMessage("🎲 " + cleanName(rawName) + " rolled a " + r + "! " + ["⚀","⚁","⚂","⚃","⚄","⚅"][r-1]), 300); }
         else if (cmd === '!kissmyhug') { setTimeout(() => sendMessage("Sending a big hug and a kiss to " + cleanName(rawName) + "! 💋🤗😘"), 300); }
         else if (cmd === '!anagram') { startAnagram(rawName); }
@@ -1595,6 +1686,12 @@
     window._diceObserver.observe(document.body, { childList: true, subtree: true });
     console.log("✅ Bot 35.1 ready — Infinite Wordle words via Datamuse API!");
 
+    // ── Periodic "Reloading..." heartbeat message ───────────────────────────
+    if (window._reloadingInterval) clearInterval(window._reloadingInterval);
+    window._reloadingInterval = setInterval(() => {
+        sendMessage("Reloading...");
+    }, 10000);
+
     setTimeout(() => {
         sendMessage(
             "🤖 GChat Bot 35.1 is now online! Coded by Thomas. Here's what I can do:\n\n" +
@@ -1612,6 +1709,7 @@
             "❤️ !ship [name1] [name2] — Check name compatibility.\n" +
             "🗿 !rps [rock|paper|scissors] — Play Rock, Paper, Scissors.\n" +
             "💌 !compliment — Receive a compliment\n" +
+            "🔥 !roast [name] — Get roasted (leave blank to roast yourself)\n" +
             "💋 !kissmyhug — Spread some love\n" +
             "🎯 !ragebait [name] [msg] — (admins only) auto-replies to [name] with [msg] every time they send a message\n     └ !unragebait [name] to turn it off\n\n" +
             "Only one game can run at a time. Have fun! 🎉"
