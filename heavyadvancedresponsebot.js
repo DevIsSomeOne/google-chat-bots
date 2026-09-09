@@ -1,4 +1,12 @@
 (function () {
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONFIG — edit here
+    // ═══════════════════════════════════════════════════════════════════════
+    // The only 3 people allowed to use !ragebait / !unragebait. Use the exact
+    // display name as it appears in the chat.
+    const RAGEBAIT_ADMINS = ["Name One", "Name Two", "Name Three"];
+    // ═══════════════════════════════════════════════════════════════════════
+
     if (window._diceObserver) {
         window._diceObserver.disconnect();
         console.log("♻️ Stopped old observer.");
@@ -45,10 +53,7 @@
     const _lastAfkNotice = {};
     const AFK_NOTICE_COOLDOWN_MS = 10000;
 
-    // ── Ragebait State ────────────────────────────────────────────────────
-    // Only the 3 names listed here can set/clear a ragebait target. Put the
-    // exact display names of the people you want to have access below.
-    const RAGEBAIT_ADMINS = ["Name One", "Name Two", "Name Three"];
+    // ── Ragebait State (config is at the very top of the file) ────────────
     // { "targetnamelowercase": { message: "...", setBy: "..." } }
     let ragebaitState = {};
     const _lastRagebaitFire = {};
@@ -1500,7 +1505,7 @@
             "🗿 !rps [rock|paper|scissors] — Play Rock, Paper, Scissors.\n" +
             "💌 !compliment — Receive a compliment\n" +
             "💋 !kissmyhug — Spread some love\n" +
-            "🎯 !ragebait [name] [msg] / !unragebait [name] — restricted to a few admins\n\n" +
+            "🎯 !ragebait [name] [msg] — (admins only) auto-replies to [name] with [msg] every time they send a message\n     └ !unragebait [name] to turn it off\n\n" +
             "Only one game can run at a time. Have fun! 🎉"
         );
     }, 1500);
