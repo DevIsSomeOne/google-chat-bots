@@ -827,6 +827,12 @@
         setTimeout(() => sendMessage("🔥 " + name + ": " + roast), 300);
     };
 
+    // ── Callout ──────────────────────────────────────────────────────────────
+    const sendCallout = (rawName, args) => {
+        const name = (args && args.length) ? cleanName(args.join(' ')) : cleanName(rawName);
+        setTimeout(() => sendMessage("🚨 " + name + " touches balloons"), 300);
+    };
+
 
     const HANGMAN_ART = [
         ["  +---+  ","  |   |  ","      |  ","      |  ","      |  ","      |  ","========="],
@@ -1609,6 +1615,7 @@
         else if (cmd === '!zork') { startZork(rawName); }
         else if (cmd === '!compliment') { sendCompliment(rawName); }
         else if (cmd === '!roast') { sendRoast(rawName, args); }
+        else if (cmd === '!callout') { sendCallout(rawName, args); }
         else if (cmd === '!dice') { const r = Math.floor(Math.random()*6)+1; setTimeout(() => sendMessage("🎲 " + cleanName(rawName) + " rolled a " + r + "! " + ["⚀","⚁","⚂","⚃","⚄","⚅"][r-1]), 300); }
         else if (cmd === '!kissmyhug') { setTimeout(() => sendMessage("Sending a big hug and a kiss to " + cleanName(rawName) + "! 💋🤗😘"), 300); }
         else if (cmd === '!anagram') { startAnagram(rawName); }
@@ -1690,7 +1697,7 @@
     if (window._reloadingInterval) clearInterval(window._reloadingInterval);
     window._reloadingInterval = setInterval(() => {
         sendMessage("Reloading...");
-    }, 1000000);
+    }, 5000);
 
     setTimeout(() => {
         sendMessage(
@@ -1710,6 +1717,7 @@
             "🗿 !rps [rock|paper|scissors] — Play Rock, Paper, Scissors.\n" +
             "💌 !compliment — Receive a compliment\n" +
             "🔥 !roast [name] — Get roasted (leave blank to roast yourself)\n" +
+            "🚨 !callout [name] — Expose someone (leave blank to expose yourself)\n" +
             "💋 !kissmyhug — Spread some love\n" +
             "🎯 !ragebait [name] [msg] — (admins only) auto-replies to [name] with [msg] every time they send a message\n     └ !unragebait [name] to turn it off\n\n" +
             "Only one game can run at a time. Have fun! 🎉"
