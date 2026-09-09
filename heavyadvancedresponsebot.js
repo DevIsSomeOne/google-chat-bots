@@ -42,6 +42,8 @@
     let madLibsState = { active: false, needed: [], collected: [], startedBy: "" };
     let zorkState = { active: false, location: "entrance", inventory: [], flags: {} };
     let afkState = {};
+    const _lastAfkNotice = {};
+    const AFK_NOTICE_COOLDOWN_MS = 10000;
 
     // ── Mad Libs Engine ─────────────────────────────────────────────────────
     const MADLIBS_TEMPLATES = [
@@ -1145,6 +1147,12 @@
     const _outgoingQueue = [];
     let _sendingNow = false;
 
+    // Texts the bot has sent but hasn't yet seen echoed back by the
+    // MutationObserver. Used to stop the bot from reacting to its own
+    // messages (e.g. an "!afk" notice that itself contains the AFK user's
+    // name, which would otherwise re-trigger the mention check forever).
+    const _botSentTexts = new Set();
+
     const sendMessage = (text) => {
         _outgoingQueue.push(text);
         _pumpOutgoingQueue();
@@ -1153,6 +1161,7 @@
     const _pumpOutgoingQueue = () => {
         if (_sendingNow || _outgoingQueue.length === 0) return;
         const text = _outgoingQueue.shift();
+        _botSentTexts.add(text);
         const editor = document.querySelector('div[contenteditable="true"]');
         if (!editor) {
             // No editor available right now (tab backgrounded, DOM not ready, etc).
@@ -1220,6 +1229,16 @@
  
 
         const text = (node.innerText || node.textContent || '').trim();
+
+        // The bot's own messages get picked up by the observer just like any
+        // other message. If we don't recognize and skip them here, an "is
+        // away" notice (which contains the AFK user's name) re-triggers the
+        // mention check below and the bot spams itself forever.
+        if (_botSentTexts.has(text)) {
+            _botSentTexts.delete(text);
+            return;
+        }
+
         let rawName = "Player";
         let el_for_name = node; for (let i = 0; i < 12 && el_for_name; i++) { const nameEl = el_for_name.querySelector && el_for_name.querySelector('[data-name], [data-hovercard-id], [aria-label*="sent by"]'); if (nameEl) { rawName = nameEl.getAttribute('data-name') || nameEl.getAttribute('aria-label') || nameEl.innerText; break; } el_for_name = el_for_name.parentElement; }
         const name = cleanName(rawName);
@@ -1230,11 +1249,22 @@
             delete afkState[name];
             sendMessage("👋 Welcome back, " + name + "!");
         }
-        // 2. Check if an AFK user is mentioned in this message
+        // 2. Check if an AFK user is mentioned in this message (word-boundary
+        // match so a name that happens to be a substring of another word
+        // doesn't false-positive), throttled per user so a flurry of
+        // messages mentioning the same AFK person doesn't spam the chat.
         if (!text.startsWith('!afk')) {
-            const afkUser = Object.keys(afkState).find(u => text.includes(u) || text.includes("@" + u));
+            const afkUser = Object.keys(afkState).find(u => {
+                const escaped = u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const re = new RegExp("(^|\\s|@)" + escaped + "(\\s|$|[.,!?])", "i");
+                return re.test(text);
+            });
             if (afkUser) {
-                sendMessage("💤 " + afkUser + " is away: " + afkState[afkUser]);
+                const now = Date.now();
+                if (now - (_lastAfkNotice[afkUser] || 0) > AFK_NOTICE_COOLDOWN_MS) {
+                    _lastAfkNotice[afkUser] = now;
+                    sendMessage("💤 " + afkUser + " is away: " + afkState[afkUser]);
+                }
             }
         }
         // ────────────────────────────────────────────────────────────────────
