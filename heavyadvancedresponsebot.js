@@ -830,7 +830,7 @@
     // ── Callout ──────────────────────────────────────────────────────────────
     const sendCallout = (rawName, args) => {
         const name = (args && args.length) ? cleanName(args.join(' ')) : cleanName(rawName);
-        setTimeout(() => sendMessage("🚨 " + name + " touches balloons"), 300);
+        setTimeout(() => sendMessage("🚨 " + name + " was in the files"), 300);
     };
 
 
