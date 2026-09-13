@@ -59,6 +59,130 @@
     const _lastRagebaitFire = {};
     const RAGEBAIT_COOLDOWN_MS = 4000; // don't refire on the same target within this window
 
+    // ── Casino / Virtual Currency State ────────────────────────────────────
+    // Play-money only — no real currency ever changes hands. Balances live
+    // only in memory for this session (reset on page reload).
+    const STARTING_BALANCE = 100;
+    const DAILY_BONUS = 50;
+    const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    let casinoState = { balances: {}, lastDaily: {} };
+
+    const getBalance = (name) => {
+        if (!(name in casinoState.balances)) casinoState.balances[name] = STARTING_BALANCE;
+        return casinoState.balances[name];
+    };
+
+    const parseBetAmount = (raw, name) => {
+        const balance = getBalance(name);
+        if (!raw) return null;
+        if (/^all[- ]?in$/i.test(raw)) return balance;
+        const n = parseInt(raw.replace(/,/g, ''), 10);
+        if (isNaN(n)) return null;
+        return n;
+    };
+
+    // ── Slots ───────────────────────────────────────────────────────────────
+    const SLOT_SYMBOLS = [
+        { icon: "🍒", weight: 30, payout: 2 },
+        { icon: "🍋", weight: 25, payout: 3 },
+        { icon: "🔔", weight: 18, payout: 5 },
+        { icon: "⭐", weight: 12, payout: 10 },
+        { icon: "💎", weight: 8, payout: 20 },
+        { icon: "7️⃣", weight: 4, payout: 50 }
+    ];
+    const _slotWeightTotal = SLOT_SYMBOLS.reduce((s, x) => s + x.weight, 0);
+    const spinReel = () => {
+        let r = Math.random() * _slotWeightTotal;
+        for (const s of SLOT_SYMBOLS) {
+            if (r < s.weight) return s;
+            r -= s.weight;
+        }
+        return SLOT_SYMBOLS[0];
+    };
+
+    const playSlots = (rawName, rawAmount) => {
+        const name = cleanName(rawName);
+        const balance = getBalance(name);
+        const bet = parseBetAmount(rawAmount, name);
+
+        if (bet === null) { sendMessage("🎰 Usage: !slots [amount]  (e.g. !slots 20, or !slots all-in)\n💰 " + name + "'s balance: " + balance); return; }
+        if (bet <= 0 || !Number.isFinite(bet)) { sendMessage("⚠️ " + name + ": Bet must be a positive number."); return; }
+        if (bet > balance) { sendMessage("⚠️ " + name + ": You only have " + balance + " coins — can't bet " + bet + "."); return; }
+
+        const reels = [spinReel(), spinReel(), spinReel()];
+        const display = reels.map(r => r.icon).join(" | ");
+        let winnings = 0;
+        let resultLine;
+
+        if (reels[0].icon === reels[1].icon && reels[1].icon === reels[2].icon) {
+            winnings = bet * reels[0].payout;
+            resultLine = "🎉 JACKPOT! Triple " + reels[0].icon + "! You win " + winnings + " coins!";
+        } else if (reels[0].icon === reels[1].icon || reels[1].icon === reels[2].icon || reels[0].icon === reels[2].icon) {
+            winnings = Math.floor(bet * 1.5);
+            resultLine = "✨ Pair! You win " + winnings + " coins!";
+        } else {
+            winnings = -bet;
+            resultLine = "💨 No match. You lose " + bet + " coins.";
+        }
+
+        casinoState.balances[name] = balance + winnings;
+        sendMessage(
+            "🎰 [ " + display + " ]\n" + resultLine + "\n💰 New balance: " + casinoState.balances[name]
+        );
+    };
+
+    // ── Coinflip ─────────────────────────────────────────────────────────────
+    const playCoinflip = (rawName, args) => {
+        const name = cleanName(rawName);
+        const balance = getBalance(name);
+        const validCall = (c) => c && /^(heads|tails|h|t)$/i.test(c);
+
+        // Accept either "!coinflip 20 heads" or "!coinflip heads 20"
+        let rawAmount, callArg;
+        if (validCall(args[0])) { callArg = args[0]; rawAmount = args[1]; }
+        else { rawAmount = args[0]; callArg = args[1]; }
+
+        const bet = parseBetAmount(rawAmount, name);
+        if (bet === null || !validCall(callArg)) {
+            sendMessage("🪙 Usage: !coinflip [amount] [heads|tails]  (e.g. !coinflip 20 heads)\n💰 " + name + "'s balance: " + balance);
+            return;
+        }
+        if (bet <= 0 || !Number.isFinite(bet)) { sendMessage("⚠️ " + name + ": Bet must be a positive number."); return; }
+        if (bet > balance) { sendMessage("⚠️ " + name + ": You only have " + balance + " coins — can't bet " + bet + "."); return; }
+
+        const call = /^h/i.test(callArg) ? "heads" : "tails";
+        const result = Math.random() < 0.5 ? "heads" : "tails";
+        const won = call === result;
+        const winnings = won ? bet : -bet;
+        casinoState.balances[name] = balance + winnings;
+
+        sendMessage(
+            "🪙 The coin lands on... " + (result === "heads" ? "HEADS 🙂" : "TAILS 🦅") + "!\n" +
+            (won ? "🎉 You called it! +" + bet + " coins." : "💨 Wrong call. -" + bet + " coins.") +
+            "\n💰 New balance: " + casinoState.balances[name]
+        );
+    };
+
+    // ── Balance / Daily ───────────────────────────────────────────────────────
+    const showBalance = (rawName) => {
+        const name = cleanName(rawName);
+        sendMessage("💰 " + name + "'s balance: " + getBalance(name) + " coins");
+    };
+
+    const claimDaily = (rawName) => {
+        const name = cleanName(rawName);
+        const now = Date.now();
+        const last = casinoState.lastDaily[name] || 0;
+        if (now - last < DAILY_COOLDOWN_MS) {
+            const hoursLeft = Math.ceil((DAILY_COOLDOWN_MS - (now - last)) / (60 * 60 * 1000));
+            sendMessage("⏳ " + name + ": Already claimed today. Try again in ~" + hoursLeft + "h.");
+            return;
+        }
+        casinoState.lastDaily[name] = now;
+        casinoState.balances[name] = getBalance(name) + DAILY_BONUS;
+        sendMessage("🎁 " + name + " claimed their daily " + DAILY_BONUS + " coins! 💰 New balance: " + casinoState.balances[name]);
+    };
+
     // ── Mad Libs Engine ─────────────────────────────────────────────────────
     const MADLIBS_TEMPLATES = [
         {
@@ -1627,6 +1751,10 @@
             afkState[cleanName(rawName)] = reason;
             sendMessage("💤 " + cleanName(rawName) + " is now AFK: " + reason);
         }
+        else if (cmd === '!slots') { playSlots(rawName, args[0]); }
+        else if (cmd === '!coinflip' || cmd === '!cf') { playCoinflip(rawName, args); }
+        else if (cmd === '!balance' || cmd === '!coins') { showBalance(rawName); }
+        else if (cmd === '!daily') { claimDaily(rawName); }
         else if (cmd === '!ragebait') {
             const setterName = cleanName(rawName);
             const isAdmin = RAGEBAIT_ADMINS.some(a => a.toLowerCase() === setterName.toLowerCase());
@@ -1719,6 +1847,10 @@
             "🔥 !roast [name] — Get roasted (leave blank to roast yourself)\n" +
             "🚨 !callout [name] — Expose someone (leave blank to expose yourself)\n" +
             "💋 !kissmyhug — Spread some love\n" +
+            "🎰 !slots [amount] — Spin the slot machine (play money only)\n" +
+            "🪙 !coinflip [amount] [heads|tails] — Bet on a coin flip\n" +
+            "💰 !balance — Check your coin balance\n" +
+            "🎁 !daily — Claim your daily " + DAILY_BONUS + " coins\n" +
             "🎯 !ragebait [name] [msg] — (admins only) auto-replies to [name] with [msg] every time they send a message\n     └ !unragebait [name] to turn it off\n\n" +
             "Only one game can run at a time. Have fun! 🎉"
         );
